@@ -29,6 +29,11 @@ export interface StaggeredMenuProps {
   onMenuOpen?: () => void;
   onMenuClose?: () => void;
   isFixed?: boolean;
+  menuLabel?: string;
+  closeLabel?: string;
+  customIcon?: React.ReactNode;
+  customCloseIcon?: React.ReactNode;
+  hideDefaultIcon?: boolean;
 }
 
 export const StaggeredMenu: React.FC<StaggeredMenuProps> = ({
@@ -46,7 +51,12 @@ export const StaggeredMenu: React.FC<StaggeredMenuProps> = ({
   accentColor = '#5227FF',
   isFixed = false,
   onMenuOpen,
-  onMenuClose
+  onMenuClose,
+  menuLabel = 'Menu',
+  closeLabel = 'Close',
+  customIcon,
+  customCloseIcon,
+  hideDefaultIcon = false
 }: StaggeredMenuProps) => {
   const [open, setOpen] = useState(false);
   const openRef = useRef(false);
@@ -56,13 +66,14 @@ export const StaggeredMenu: React.FC<StaggeredMenuProps> = ({
   const plusHRef = useRef<HTMLSpanElement | null>(null);
   const plusVRef = useRef<HTMLSpanElement | null>(null);
   const iconRef = useRef<HTMLSpanElement | null>(null);
+  const customIconRef = useRef<HTMLSpanElement | null>(null);
   const textInnerRef = useRef<HTMLSpanElement | null>(null);
   const textWrapRef = useRef<HTMLSpanElement | null>(null);
-  const [textLines, setTextLines] = useState<string[]>(['Menu', 'Close']);
+  const [textLines, setTextLines] = useState<string[]>([menuLabel, closeLabel]);
 
   const openTlRef = useRef<gsap.core.Timeline | null>(null);
   const closeTweenRef = useRef<gsap.core.Tween | null>(null);
-  const spinTweenRef = useRef<gsap.core.Tween | null>(null);
+  const spinTweenRef = useRef<gsap.core.Timeline | null>(null);
   const textCycleAnimRef = useRef<gsap.core.Tween | null>(null);
   const colorTweenRef = useRef<gsap.core.Tween | null>(null);
   const toggleBtnRef = useRef<HTMLButtonElement | null>(null);
@@ -77,7 +88,11 @@ export const StaggeredMenu: React.FC<StaggeredMenuProps> = ({
       const plusV = plusVRef.current;
       const icon = iconRef.current;
       const textInner = textInnerRef.current;
-      if (!panel || !plusH || !plusV || !icon || !textInner) return;
+      
+      if (!panel) return;
+      
+      // Solo validar refs si no estamos usando customIcon o customCloseIcon
+      if (!(customIcon || customCloseIcon) && (!plusH || !plusV || !icon || !textInner)) return;
 
       let preLayers: HTMLElement[] = [];
       if (preContainer) {
@@ -87,14 +102,18 @@ export const StaggeredMenu: React.FC<StaggeredMenuProps> = ({
 
       const offscreen = position === 'left' ? -100 : 100;
       gsap.set([panel, ...preLayers], { xPercent: offscreen });
-      gsap.set(plusH, { transformOrigin: '50% 50%', rotate: 0 });
-      gsap.set(plusV, { transformOrigin: '50% 50%', rotate: 90 });
-      gsap.set(icon, { rotate: 0, transformOrigin: '50% 50%' });
-      gsap.set(textInner, { yPercent: 0 });
+      
+      if (!(customIcon || customCloseIcon)) {
+        if (plusH) gsap.set(plusH, { transformOrigin: '50% 50%', rotate: 0 });
+        if (plusV) gsap.set(plusV, { transformOrigin: '50% 50%', rotate: 90 });
+        if (icon) gsap.set(icon, { rotate: 0, transformOrigin: '50% 50%' });
+        if (textInner) gsap.set(textInner, { yPercent: 0 });
+      }
+      
       if (toggleBtnRef.current) gsap.set(toggleBtnRef.current, { color: menuButtonColor });
     });
     return () => ctx.revert();
-  }, [menuButtonColor, position]);
+  }, [menuButtonColor, position, customIcon, customCloseIcon]);
 
   const buildOpenTimeline = useCallback(() => {
     const panel = panelRef.current;
@@ -262,14 +281,50 @@ export const StaggeredMenu: React.FC<StaggeredMenuProps> = ({
 
   const animateIcon = useCallback((opening: boolean) => {
     const icon = iconRef.current;
+    const customIconEl = customIconRef.current;
+    
+    if (customIcon || customCloseIcon) {
+      if (customIconEl) {
+        spinTweenRef.current?.kill();
+        spinTweenRef.current = gsap.timeline();
+        
+        if (opening && customCloseIcon) {
+          spinTweenRef.current.to(customIconEl, {
+            opacity: 0,
+            scale: 0.8,
+            duration: 0.15,
+            ease: 'power2.in'
+          });
+        } else if (!opening && customCloseIcon) {
+          spinTweenRef.current.to(customIconEl, {
+            opacity: 1,
+            scale: 1,
+            duration: 0.15,
+            ease: 'power2.out'
+          });
+        }
+      }
+      return;
+    }
+    
     if (!icon) return;
     spinTweenRef.current?.kill();
     if (opening) {
-      spinTweenRef.current = gsap.to(icon, { rotate: 225, duration: 0.8, ease: 'power4.out', overwrite: 'auto' });
+      spinTweenRef.current = gsap.timeline().to(icon, { 
+        rotate: 225, 
+        duration: 0.8, 
+        ease: 'power4.out', 
+        overwrite: 'auto' 
+      });
     } else {
-      spinTweenRef.current = gsap.to(icon, { rotate: 0, duration: 0.35, ease: 'power3.inOut', overwrite: 'auto' });
+      spinTweenRef.current = gsap.timeline().to(icon, { 
+        rotate: 0, 
+        duration: 0.35, 
+        ease: 'power3.inOut', 
+        overwrite: 'auto' 
+      });
     }
-  }, []);
+  }, [customIcon, customCloseIcon]);
 
   const animateColor = useCallback(
     (opening: boolean) => {
@@ -307,13 +362,13 @@ export const StaggeredMenu: React.FC<StaggeredMenuProps> = ({
     if (!inner) return;
     textCycleAnimRef.current?.kill();
 
-    const currentLabel = opening ? 'Menu' : 'Close';
-    const targetLabel = opening ? 'Close' : 'Menu';
+    const currentLabel = opening ? menuLabel : closeLabel;
+    const targetLabel = opening ? closeLabel : menuLabel;
     const cycles = 3;
     const seq: string[] = [currentLabel];
     let last = currentLabel;
     for (let i = 0; i < cycles; i++) {
-      last = last === 'Menu' ? 'Close' : 'Menu';
+      last = last === menuLabel ? closeLabel : menuLabel;
       seq.push(last);
     }
     if (last !== targetLabel) seq.push(targetLabel);
@@ -328,7 +383,7 @@ export const StaggeredMenu: React.FC<StaggeredMenuProps> = ({
       duration: 0.5 + lineCount * 0.07,
       ease: 'power4.out'
     });
-  }, []);
+  }, [menuLabel, closeLabel]);
 
   const toggleMenu = useCallback(() => {
     const target = !openRef.current;
@@ -384,19 +439,29 @@ export const StaggeredMenu: React.FC<StaggeredMenuProps> = ({
           onClick={toggleMenu}
           type="button"
         >
-          <span ref={textWrapRef} className="sm-toggle-textWrap" aria-hidden="true">
-            <span ref={textInnerRef} className="sm-toggle-textInner">
-              {textLines.map((l, i) => (
-                <span className="sm-toggle-line" key={i}>
-                  {l}
-                </span>
-              ))}
+          {customIcon || customCloseIcon ? (
+            <span ref={customIconRef} className="sm-custom-icon" aria-hidden="true">
+              {open && customCloseIcon ? customCloseIcon : customIcon}
             </span>
-          </span>
-          <span ref={iconRef} className="sm-icon" aria-hidden="true">
-            <span ref={plusHRef} className="sm-icon-line" />
-            <span ref={plusVRef} className="sm-icon-line sm-icon-line-v" />
-          </span>
+          ) : (
+            <>
+              <span ref={textWrapRef} className="sm-toggle-textWrap" aria-hidden="true">
+                <span ref={textInnerRef} className="sm-toggle-textInner">
+                  {textLines.map((l, i) => (
+                    <span className="sm-toggle-line" key={i}>
+                      {l}
+                    </span>
+                  ))}
+                </span>
+              </span>
+              {!hideDefaultIcon && (
+                <span ref={iconRef} className="sm-icon" aria-hidden="true">
+                  <span ref={plusHRef} className="sm-icon-line" />
+                  <span ref={plusVRef} className="sm-icon-line sm-icon-line-v" />
+                </span>
+              )}
+            </>
+          )}
         </button>
       </header>
 
