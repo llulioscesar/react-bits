@@ -26,6 +26,11 @@ export interface StaggeredMenuProps {
   changeMenuColorOnOpen?: boolean;
   onMenuOpen?: () => void;
   onMenuClose?: () => void;
+  menuLabel?: string;
+  closeLabel?: string;
+  customIcon?: React.ReactNode;
+  customCloseIcon?: React.ReactNode;
+  hideDefaultIcon?: boolean;
 }
 
 export const StaggeredMenu: React.FC<StaggeredMenuProps> = ({
@@ -43,7 +48,12 @@ export const StaggeredMenu: React.FC<StaggeredMenuProps> = ({
   accentColor = '#5227FF',
   isFixed = false,
   onMenuOpen,
-  onMenuClose
+  onMenuClose,
+  menuLabel = 'Menu',
+  closeLabel = 'Close',
+  customIcon,
+  customCloseIcon,
+  hideDefaultIcon = false
 }: StaggeredMenuProps) => {
   const [open, setOpen] = useState(false);
   const openRef = useRef(false);
@@ -55,10 +65,11 @@ export const StaggeredMenu: React.FC<StaggeredMenuProps> = ({
   const plusHRef = useRef<HTMLSpanElement | null>(null);
   const plusVRef = useRef<HTMLSpanElement | null>(null);
   const iconRef = useRef<HTMLSpanElement | null>(null);
+  const customIconRef = useRef<HTMLSpanElement | null>(null);
 
   const textInnerRef = useRef<HTMLSpanElement | null>(null);
   const textWrapRef = useRef<HTMLSpanElement | null>(null);
-  const [textLines, setTextLines] = useState<string[]>(['Menu', 'Close']);
+  const [textLines, setTextLines] = useState<string[]>([menuLabel, closeLabel]);
 
   const openTlRef = useRef<gsap.core.Timeline | null>(null);
   const closeTweenRef = useRef<gsap.core.Tween | null>(null);
@@ -81,7 +92,10 @@ export const StaggeredMenu: React.FC<StaggeredMenuProps> = ({
       const icon = iconRef.current;
       const textInner = textInnerRef.current;
 
-      if (!panel || !plusH || !plusV || !icon || !textInner) return;
+      if (!panel) return;
+
+      // Solo validar refs si no estamos usando customIcon o customCloseIcon
+      if (!(customIcon || customCloseIcon) && (!plusH || !plusV || !icon || !textInner)) return;
 
       let preLayers: HTMLElement[] = [];
       if (preContainer) {
@@ -92,16 +106,17 @@ export const StaggeredMenu: React.FC<StaggeredMenuProps> = ({
       const offscreen = position === 'left' ? -100 : 100;
       gsap.set([panel, ...preLayers], { xPercent: offscreen });
 
-      gsap.set(plusH, { transformOrigin: '50% 50%', rotate: 0 });
-      gsap.set(plusV, { transformOrigin: '50% 50%', rotate: 90 });
-      gsap.set(icon, { rotate: 0, transformOrigin: '50% 50%' });
-
-      gsap.set(textInner, { yPercent: 0 });
+      if (!(customIcon || customCloseIcon)) {
+        if (plusH) gsap.set(plusH, { transformOrigin: '50% 50%', rotate: 0 });
+        if (plusV) gsap.set(plusV, { transformOrigin: '50% 50%', rotate: 90 });
+        if (icon) gsap.set(icon, { rotate: 0, transformOrigin: '50% 50%' });
+        if (textInner) gsap.set(textInner, { yPercent: 0 });
+      }
 
       if (toggleBtnRef.current) gsap.set(toggleBtnRef.current, { color: menuButtonColor });
     });
     return () => ctx.revert();
-  }, [menuButtonColor, position]);
+  }, [menuButtonColor, position, customIcon, customCloseIcon]);
 
   const buildOpenTimeline = useCallback(() => {
     const panel = panelRef.current;
@@ -245,6 +260,33 @@ export const StaggeredMenu: React.FC<StaggeredMenuProps> = ({
   }, [position]);
 
   const animateIcon = useCallback((opening: boolean) => {
+    // Si usamos iconos personalizados, animar con fade/rotate
+    if (customIcon || customCloseIcon) {
+      const customIconEl = customIconRef.current;
+      if (!customIconEl) return;
+
+      spinTweenRef.current?.kill();
+
+      // Animación de fade out, rotate y fade in
+      spinTweenRef.current = gsap
+        .timeline({ defaults: { ease: 'power2.inOut' } })
+        .to(customIconEl, {
+          opacity: 0,
+          rotate: opening ? 90 : -90,
+          scale: 0.8,
+          duration: 0.2
+        })
+        .set(customIconEl, { rotate: opening ? -90 : 90 })
+        .to(customIconEl, {
+          opacity: 1,
+          rotate: 0,
+          scale: 1,
+          duration: 0.3
+        });
+      return;
+    }
+
+    // Animación original para el icono "+"
     const icon = iconRef.current;
     const h = plusHRef.current;
     const v = plusVRef.current;
@@ -266,7 +308,7 @@ export const StaggeredMenu: React.FC<StaggeredMenuProps> = ({
         .to(v, { rotate: 90, duration: 0.35 }, 0)
         .to(icon, { rotate: 0, duration: 0.001 }, 0);
     }
-  }, []);
+  }, [customIcon, customCloseIcon]);
 
   const animateColor = useCallback(
     (opening: boolean) => {
@@ -295,19 +337,21 @@ export const StaggeredMenu: React.FC<StaggeredMenuProps> = ({
   }, [changeMenuColorOnOpen, menuButtonColor, openMenuButtonColor]);
 
   const animateText = useCallback((opening: boolean) => {
+    if (customIcon || customCloseIcon) return; // No animar texto si usamos customIcon
+
     const inner = textInnerRef.current;
     if (!inner) return;
 
     textCycleAnimRef.current?.kill();
 
-    const currentLabel = opening ? 'Menu' : 'Close';
-    const targetLabel = opening ? 'Close' : 'Menu';
+    const currentLabel = opening ? menuLabel : closeLabel;
+    const targetLabel = opening ? closeLabel : menuLabel;
     const cycles = 3;
 
     const seq: string[] = [currentLabel];
     let last = currentLabel;
     for (let i = 0; i < cycles; i++) {
-      last = last === 'Menu' ? 'Close' : 'Menu';
+      last = last === menuLabel ? closeLabel : menuLabel;
       seq.push(last);
     }
     if (last !== targetLabel) seq.push(targetLabel);
@@ -324,7 +368,7 @@ export const StaggeredMenu: React.FC<StaggeredMenuProps> = ({
       duration: 0.5 + lineCount * 0.07,
       ease: 'power4.out'
     });
-  }, []);
+  }, [menuLabel, closeLabel, customIcon, customCloseIcon]);
 
   const toggleMenu = useCallback(() => {
     const target = !openRef.current;
@@ -377,7 +421,9 @@ export const StaggeredMenu: React.FC<StaggeredMenuProps> = ({
         </div>
 
         <header
-          className="staggered-menu-header absolute top-0 left-0 w-full flex items-center justify-between p-[2em] bg-transparent pointer-events-none z-20"
+          className={`staggered-menu-header absolute top-0 left-0 w-full flex items-center justify-between p-[2em] bg-transparent pointer-events-none z-20 ${
+            position === 'left' ? 'flex-row-reverse' : ''
+          }`}
           aria-label="Main navigation header"
         >
           <div className="sm-logo flex items-center select-none pointer-events-auto" aria-label="Logo">
@@ -402,34 +448,44 @@ export const StaggeredMenu: React.FC<StaggeredMenuProps> = ({
             onClick={toggleMenu}
             type="button"
           >
-            <span
-              ref={textWrapRef}
-              className="sm-toggle-textWrap relative inline-block h-[1em] overflow-hidden whitespace-nowrap w-[var(--sm-toggle-width,auto)] min-w-[var(--sm-toggle-width,auto)]"
-              aria-hidden="true"
-            >
-              <span ref={textInnerRef} className="sm-toggle-textInner flex flex-col leading-none">
-                {textLines.map((l, i) => (
-                  <span className="sm-toggle-line block h-[1em] leading-none" key={i}>
-                    {l}
-                  </span>
-                ))}
+            {customIcon || customCloseIcon ? (
+              <span ref={customIconRef} className="sm-custom-icon" style={{ display: 'inline-flex' }}>
+                {open && customCloseIcon ? customCloseIcon : customIcon}
               </span>
-            </span>
+            ) : (
+              <>
+                <span
+                  ref={textWrapRef}
+                  className="sm-toggle-textWrap relative inline-block h-[1em] overflow-hidden whitespace-nowrap w-[var(--sm-toggle-width,auto)] min-w-[var(--sm-toggle-width,auto)]"
+                  aria-hidden="true"
+                >
+                  <span ref={textInnerRef} className="sm-toggle-textInner flex flex-col leading-none">
+                    {textLines.map((l, i) => (
+                      <span className="sm-toggle-line block h-[1em] leading-none" key={i}>
+                        {l}
+                      </span>
+                    ))}
+                  </span>
+                </span>
 
-            <span
-              ref={iconRef}
-              className="sm-icon relative w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center [will-change:transform]"
-              aria-hidden="true"
-            >
-              <span
-                ref={plusHRef}
-                className="sm-icon-line absolute left-1/2 top-1/2 w-full h-[2px] bg-current rounded-[2px] -translate-x-1/2 -translate-y-1/2 [will-change:transform]"
-              />
-              <span
-                ref={plusVRef}
-                className="sm-icon-line sm-icon-line-v absolute left-1/2 top-1/2 w-full h-[2px] bg-current rounded-[2px] -translate-x-1/2 -translate-y-1/2 [will-change:transform]"
-              />
-            </span>
+                {!hideDefaultIcon && (
+                  <span
+                    ref={iconRef}
+                    className="sm-icon relative w-[14px] h-[14px] shrink-0 inline-flex items-center justify-center [will-change:transform]"
+                    aria-hidden="true"
+                  >
+                    <span
+                      ref={plusHRef}
+                      className="sm-icon-line absolute left-1/2 top-1/2 w-full h-[2px] bg-current rounded-[2px] -translate-x-1/2 -translate-y-1/2 [will-change:transform]"
+                    />
+                    <span
+                      ref={plusVRef}
+                      className="sm-icon-line sm-icon-line-v absolute left-1/2 top-1/2 w-full h-[2px] bg-current rounded-[2px] -translate-x-1/2 -translate-y-1/2 [will-change:transform]"
+                    />
+                  </span>
+                )}
+              </>
+            )}
           </button>
         </header>
 
